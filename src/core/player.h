@@ -194,6 +194,10 @@ public:
    void GameLoop();
 
    void UpdateGameLogic();
+#ifdef ENABLE_HEADLESS
+   // Runs one frame of input, physics, script and animations without rendering, for the host driving a headless player
+   void StepHeadlessFrame();
+#endif
 
    VideoSyncMode GetVideoSyncMode() const { return m_playMode == Player::PlayMode::CaptureAttract ? VideoSyncMode::VSM_NONE : m_videoSyncMode; }
    void SetVideoSyncMode(VideoSyncMode mode) { m_videoSyncMode = mode; }

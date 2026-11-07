@@ -132,7 +132,9 @@ Player::Player(PinTable *const table, const PlayMode playMode, LoadProgress &loa
    if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
    {
       PLOGE << "SDL_InitSubSystem(SDL_INIT_VIDEO) failed: " << SDL_GetError();
+#ifndef ENABLE_HEADLESS // A headless player presents nothing, so it runs without a display
       exit(1);
+#endif
    }
    if (const char* const drv = SDL_GetCurrentVideoDriver()) {
       PLOGI << "SDL video driver: " << drv;
@@ -461,7 +463,7 @@ void Player::LockRenderThread()
 {
 // Wait for any pending render frame to be finished, then acquire the frame mutex on the game thread.
 // This gives the game thread exclusive access to all the render data (mutual exclusion).
-#ifdef ENABLE_BGFX
+#if defined(ENABLE_BGFX) && !defined(ENABLE_HEADLESS) // A headless player has no render thread to share the frame with
    while (m_renderer->m_renderDevice->m_framePending || !m_renderer->m_renderDevice->m_frameMutex.try_lock())
    {
       ProcessOSMessages();
@@ -471,9 +473,18 @@ void Player::LockRenderThread()
 #endif
 }
 
+#ifdef ENABLE_HEADLESS
+void Player::StepHeadlessFrame()
+{
+   UpdateGameLogic();
+   FinishFrame();
+   PrepareFrame();
+}
+#endif
+
 void Player::UnlockRenderThread()
 {
-#ifdef ENABLE_BGFX
+#if defined(ENABLE_BGFX) && !defined(ENABLE_HEADLESS)
    m_frameMutexHeld = false;
    m_renderer->m_renderDevice->m_frameMutex.unlock();
 #endif
@@ -700,6 +711,7 @@ void Player::InitTableSession(const bool isInitial)
 
    //----------------------------------------------------------------------------------
 
+#ifndef ENABLE_HEADLESS // A headless player draws nothing, so it neither decodes nor uploads textures
    if (isInitial)
    {
       // Preload all textures and images: upload textures that are flagged in the used textures
@@ -970,6 +982,7 @@ void Player::InitTableSession(const bool isInitial)
       }
 #endif
    }
+#endif
 
    //----------------------------------------------------------------------------------
 
@@ -2604,7 +2617,7 @@ void Player::PrepareFrame()
       m_renderer->m_gpu_profiler.BeginFrame(m_renderer->m_renderDevice->GetCoreDevice());
    #endif
    
-   #if defined(ENABLE_BGFX)
+   #if defined(ENABLE_BGFX) && !defined(ENABLE_HEADLESS) // A headless host already syncs right before each frame
    // Since the script can be somewhat lengthy, we do an additional sync here
    UpdateGameLogic();
    #endif
@@ -2618,7 +2631,9 @@ void Player::PrepareFrame()
    #endif
 
    // Prepare main 3D scene frame, then apply screenspace transforms, including ancillary window rendering (MSAA, AO, AA, stereo, ball motion blur, tonemapping, dithering, bloom,...)
+   #ifndef ENABLE_HEADLESS
    m_renderer->Render3DScene();
+   #endif
 
    m_physics->ResetPerFrameStats();
 
@@ -2631,7 +2646,9 @@ void Player::PrepareFrame()
 
 void Player::SubmitFrame()
 {
-   #ifdef ENABLE_BGFX
+   #if defined(ENABLE_HEADLESS)
+      // Nothing to present
+   #elif defined(ENABLE_BGFX)
       // We must own m_renderer->m_renderDevice->m_frameMutex
       m_renderer->m_renderDevice->m_framePending = true;
       m_renderer->m_renderDevice->m_frameReadySem.release();

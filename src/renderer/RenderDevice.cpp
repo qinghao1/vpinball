@@ -591,6 +591,10 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
    // Unlock requesting thread and start render loop
    rd->m_rendererInitialized.release();
 
+#ifdef ENABLE_HEADLESS
+   return; // Initialized synchronously on the game thread, which submits its frames itself: no render loop
+#endif
+
 #if defined(__STANDALONE__) && !defined(_WIN32) // bgfx/GLES lockup workaround for Android, not needed on Windows
    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 #endif
@@ -1467,8 +1471,12 @@ RenderDevice::RenderDevice(
    if (!backendMatched && !gfxBackend.empty() && gfxBackend != "Default"s) {
       PLOGW << "Ignoring unknown or unsupported graphics backend '" << gfxBackend << "' (case sensitive), using platform default. Valid values: " << validBackends;
    }
+#ifdef ENABLE_HEADLESS
+   init.type = bgfx::RendererType::Noop; // Nothing is drawn
+#else
    if (init.type == bgfx::RendererType::Noop)
       init.type = bgfx::RendererType::Count;
+#endif
    if (g_pplayer->m_vrDevice == nullptr)
    {
       // Requested only: BGFX may fall back to another backend if the requested one cannot initialize. The
@@ -1483,7 +1491,9 @@ RenderDevice::RenderDevice(
    init.swapChain.width = swapchainWnd->GetPixelWidth();
    init.swapChain.height = swapchainWnd->GetPixelHeight();
    init.platformData.context = nullptr;
-   #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
+   #if defined(ENABLE_HEADLESS)
+   // No swap chain: nothing is presented
+   #elif BX_PLATFORM_LINUX || BX_PLATFORM_BSD
    if (SDL_GetCurrentVideoDriver() == "x11"sv) {
       init.swapChain.ndt = SDL_GetPointerProperty(SDL_GetWindowProperties(swapchainWnd->GetCore()), SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
       init.swapChain.nwh = (void*)SDL_GetNumberProperty(SDL_GetWindowProperties(swapchainWnd->GetCore()), SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
@@ -1515,8 +1525,12 @@ RenderDevice::RenderDevice(
 
    ResetActiveView();
 
-   m_frameMutex.lock();
    m_renderDeviceAlive = true;
+#if defined(ENABLE_HEADLESS)
+   // No render thread: the game thread initializes BGFX and executes its frames itself (see SubmitRenderFrame)
+   RenderThread(this, init);
+#else
+   m_frameMutex.lock();
 #ifdef __EMSCRIPTEN__
    // The render thread owns the canvas (transferred as an OffscreenCanvas) since it is the one creating the WebGPU surface
    CanvasRenderHost::Get().Run([this, init] { RenderThread(this, init); });
@@ -1532,6 +1546,7 @@ RenderDevice::RenderDevice(
       Sleep(0);
 #endif
    }
+#endif
    m_useLowPrecision = bgfx::getRendererType() == bgfx::RendererType::OpenGLES;
 
 #elif defined(ENABLE_OPENGL)
@@ -2027,7 +2042,7 @@ RenderDevice::RenderDevice(
 
 RenderDevice::~RenderDevice()
 {
-   #if defined(ENABLE_BGFX)
+   #if defined(ENABLE_BGFX) && !defined(ENABLE_HEADLESS)
       // Suspend rendering before deleting anything that could be used
       m_renderDeviceAlive = false;
       m_frameReadySem.release();
@@ -2090,6 +2105,9 @@ RenderDevice::~RenderDevice()
    if (bgfx::isValid(m_srgbMipmapProgram))
       bgfx::destroy(m_srgbMipmapProgram);
 
+#ifdef ENABLE_HEADLESS
+   bgfx::shutdown(); // On the game thread, which initialized it
+#else
    // Shutdown BGFX once all native resources have been cleaned up
    m_rendererInitialized.release();
    while (!m_renderDeviceAlive)
@@ -2106,6 +2124,7 @@ RenderDevice::~RenderDevice()
 #else
    if (m_renderThread.joinable())
       m_renderThread.join();
+#endif
 #endif
 
 #elif defined(ENABLE_OPENGL)
@@ -2858,7 +2877,7 @@ void RenderDevice::SubmitRenderFrame()
 {
    // A pending command dependency is only valid for the frame being recorded: drop it to avoid keeping a pointer on a recycled pass
    m_nextRenderCommandDependency = nullptr;
-   #ifdef ENABLE_BGFX
+   #if defined(ENABLE_BGFX) && !defined(ENABLE_HEADLESS) // A headless game thread executes its frames itself
 #ifdef __EMSCRIPTEN__
    if (!CanvasRenderHost::Get().IsCurrentThread())
 #else

@@ -622,6 +622,17 @@ public:
       return m_state.data() + m_stateOffsets[static_cast<unsigned int>(uniformName)];
    }
 
+   // A uniform may be optimized out of a shader (like the stereo only 'layer'), and the headless Noop backend reports
+   // none at all: accessing a missing uniform does nothing, and reading one returns a neutral value
+   bool IsMissing(const ShaderUniform uniformName) const
+   {
+      const bool missing = m_stateOffsets[static_cast<unsigned int>(uniformName)] == -1;
+      #ifndef ENABLE_HEADLESS
+      assert(!missing || uniformName == ShaderUniform::layer);
+      #endif
+      return missing;
+   }
+
    void CopyTo(const bool copyTo, ShaderState* const other)
    {
       assert(other->m_stateOffsets == m_stateOffsets);
@@ -643,7 +654,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Bool);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].count == 1);
       *(bool*)(m_state.data() + m_stateOffsets[static_cast<unsigned int>(uniformName)]) = b;
@@ -653,9 +665,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      if (uniformName == ShaderUniform::layer && m_stateOffsets[static_cast<unsigned int>(uniformName)] == -1)
-         return; // layer uniform may be stripped out since it is only used for stereo
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Int);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].count == 1);
       *(int*)(m_state.data() + m_stateOffsets[static_cast<unsigned int>(uniformName)]) = i;
@@ -665,7 +676,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].count == 1);
       if (m_useLowPrecision)
@@ -678,7 +690,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return 0.f;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].count == 1);
       return *(float*)(m_state.data() + m_stateOffsets[static_cast<unsigned int>(uniformName)]);
@@ -688,7 +701,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float2 || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float3
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4v);
@@ -743,7 +757,8 @@ public:
    vec4 GetVector(const ShaderUniform uniformName) const
    {
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return vec4(0.f, 0.f, 0.f, 0.f);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float2 || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float3
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4v);
@@ -762,7 +777,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float3x4
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4x3
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4x4);
@@ -790,7 +806,11 @@ public:
    const Matrix3D& GetMatrix(const ShaderUniform uniformName) const
    {
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+      {
+         static const Matrix3D identity = Matrix3D::MatrixIdentity();
+         return identity;
+      }
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float3x4
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4x3
          || ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Float4x4);
@@ -802,7 +822,8 @@ public:
    {
       assert(Shader::GetCurrentShader() == nullptr);
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::DataBlock);
       if (m_useLowPrecision)
       {
@@ -836,7 +857,8 @@ public:
       #elif defined(ENABLE_DX9)
       ShaderUniform alias = m_shader->m_uniform_desc[static_cast<unsigned int>(uniformName)].tex_alias;
       #endif
-      assert(m_stateOffsets[static_cast<unsigned int>(alias)] != -1);
+      if (IsMissing(alias))
+         return;
       int* dst = reinterpret_cast<int*>(m_state.data() + m_stateOffsets[static_cast<unsigned int>(alias)]);
 
       int pos = (*dst) & 0xFF;
@@ -887,7 +909,8 @@ public:
    const std::shared_ptr<const Sampler> GetTexture(const ShaderUniform uniformName) const
    {
       assert(static_cast<unsigned int>(uniformName) < static_cast<unsigned int>(ShaderUniform::COUNT));
-      assert(m_stateOffsets[static_cast<unsigned int>(uniformName)] != -1);
+      if (IsMissing(uniformName))
+         return nullptr;
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].type == ShaderUniformType::Sampler);
       assert(ShaderUniformDef::coreUniforms[static_cast<unsigned int>(uniformName)].count == 1);
       const int pos = (*(int*)(m_state.data() + m_stateOffsets[static_cast<unsigned int>(uniformName)])) & 0xFF;

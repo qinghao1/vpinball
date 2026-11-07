@@ -383,6 +383,9 @@ void Window::RaiseAndFocus()
 }
 
 bool Window::IsFocused() const {
+#ifdef ENABLE_HEADLESS
+   return true; // Never shown, like VR windows: the host driving the player owns input
+#endif
    if (m_isVR)
       return true;
    return m_nwnd == SDL_GetKeyboardFocus();
