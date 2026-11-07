@@ -90,6 +90,7 @@ public:
    int     GetImagesPerGridRow() const { return m_d.m_imagesPerGridRow; }
    void    SetImagesPerGridRow(const int amount) { m_d.m_imagesPerGridRow = max(1, amount); }
    int     GetReels() const { return m_d.m_reelcount; }
+   int     GetReelValue(const int reel) const { return m_reelInfo[reel].currentValue; } // Digit currently shown by a reel
    void    SetReels(const int reels)
    {
        m_d.m_reelcount = min(max(1, reels), MAX_REELS); // must have at least 1 reel and a max of MAX_REELS

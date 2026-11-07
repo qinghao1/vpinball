@@ -1653,7 +1653,8 @@ void Player::OnScriptError(ScriptInterpreter::ErrorType type, int line, int colu
 
    const string errorType = (type == ScriptInterpreter::ErrorType::Runtime) ? "Runtime" : "Compile";
    const string desc = string_from_utf8_or_cp1252(description.c_str(), description.length());
-   PLOGE << errorType << " error on line " << line << ", col " << column << ": " << desc;
+   m_lastScriptError = errorType + " error on line " + std::to_string(line) + ", col " + std::to_string(column) + ": " + desc;
+   PLOGE << m_lastScriptError;
    if (m_liveUI && m_nScriptErrorNotification < 200)
    {
       m_liveUI->PushNotification(errorType + " error: " + desc, 5000);

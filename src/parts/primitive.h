@@ -269,6 +269,7 @@ public:
    bool IsPlayfield() const { return StrCompareNoCase(m_name, "playfield_mesh"s); }
 
    float GetAlpha() const { return m_d.m_alpha; }
+   float GetCurrentFrame() const { return m_currentFrame; } // Current vertex animation frame, -1 when not animated
    void SetAlpha(const float value) { m_d.m_alpha = max(value, 0.f); }
 
    // The playfield mesh follows the table setting (edited from both the table and the playfield mesh panes)

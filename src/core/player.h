@@ -395,6 +395,7 @@ public:
 
    CComObject<ScriptInterpreter>* m_scriptInterpreter = nullptr;
    unsigned int m_nScriptErrorNotification = 0;
+   string m_lastScriptError; // Last reported script error, for hosts that do not show the in-game notifications
    void OnScriptError(ScriptInterpreter::ErrorType type, int line, int column, const string &description, const vector<string> &stackDump);
 
    PinballPlugin::ResURIResolver m_resURIResolver;
